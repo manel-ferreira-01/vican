@@ -231,6 +231,12 @@ class SE3(object):
         """
         return self._t
     
+    def pose(self) -> np.ndarray:
+        """
+            Return SE(3) matrix
+        """
+        return self._pose
+    
 
     def inv(self):
         """
