@@ -107,7 +107,7 @@ def detect_and_draw(im_filename: str,
 
 def plot_cams_3D(cams: Iterable[Camera],
                  scale: float=0.4,
-                 renderer: str='browser') -> None:
+                 output: str='output.html') -> None:
     """
         Detects and draws arUco markers on image.
 
@@ -117,8 +117,8 @@ def plot_cams_3D(cams: Iterable[Camera],
             Cameras to plot.
         scale : float
             Scale of camera axis wrt the whole scene.
-        renderer : str
-            Plotly renderer options.
+        output : str
+            html file path or 'browser'.
     """
     pos = np.zeros((len(cams), 3))
     axs = np.zeros((len(cams), 3, 3, 2))
@@ -139,7 +139,13 @@ def plot_cams_3D(cams: Iterable[Camera],
                                       y=axs[i,1,j,:],
                                       z=axs[i,2,j,:]).update_traces(line_color=c[j]).data)
     fig.update_scenes(aspectmode='data')
-    fig.show(renderer=renderer)
+    
+    if output.endswith('.html'):
+        fig.write_html(output)
+        print("Saving to", output)
+    elif output == 'browser':
+        print("Opening browser")
+        fig.show(renderer=output)
 
 
 def plot2D(ax,
