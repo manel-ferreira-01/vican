@@ -30,7 +30,7 @@ def bipartite_so3sync(src_edges: dict,
     print("Applying constraints...")
     edges = {}
 
-    root = str(min(list(constraints.keys())))
+    root = str(min([int(key) for key in constraints.keys()]))
 
     for e, v in src_edges.items():
         if edge_filter(v):
@@ -138,7 +138,7 @@ def bipartite_so3sync(src_edges: dict,
         if node[0] == 'c':
             r_est[node[1:]] = r[i*3:i*3+3,:]
         elif  node[0] == 't':
-            r_est[node[1:] + '_0'] = r[i*3:i*3+3,:]
+            r_est[node[1:] + '_' + root] = r[i*3:i*3+3,:]
     return r_est
     
 
@@ -193,7 +193,8 @@ def large_bipartite_so3sync(src_edges: dict,
     """
     src_nodes = np.unique([n for e in src_edges.keys() for n in e])
 
-    root = str(min(list(constraints.keys())))
+    root = str( min( [int(key) for key in constraints.keys()] ) )
+        
     print("Received graph with {} nodes {} edges".format(len(src_nodes),
                                                          len(src_edges)))
     
@@ -345,8 +346,7 @@ def large_bipartite_so3sync(src_edges: dict,
     for c, i in cam_node2idx.items():
         out[c[1:]] = r_c[i*3:i*3+3,:].T
     for t, i in time_node2idx.items():
-        out[t[1:] + '_0'] = r_t[i*3:i*3+3,:].T
-
+        out[t[1:] + "_" + root] = r_t[i*3:i*3+3,:].T
     return out
 
 
@@ -408,15 +408,16 @@ def bipartite_se3sync(src_edges: dict,
             SE3 poses of the static cameras and of the object over time
             wrt world frame.
     """
-    root = str(min(list(constraints.keys())))
-
+    root = str (min( [int(key) for key in constraints.keys()] ) )
+    
+    
     r_est = large_bipartite_so3sync(src_edges,
                                     constraints,
                                     noise_model_r,
                                     edge_filter,
                                     maxiter,
                                     dtype)
-    
+        
     nodes = []
     edges = {}
     for e, v in src_edges.items():
@@ -424,7 +425,7 @@ def bipartite_se3sync(src_edges: dict,
             edges[e] = v
             t, marker_id = e[1].split('_')
             nodes.append(e[0])
-            nodes.append(t + '_0')
+            nodes.append(t + "_" + root)
 
     nodes = np.unique(nodes)
     node2idx = {n : i for i, n in enumerate(nodes)}
@@ -452,11 +453,11 @@ def bipartite_se3sync(src_edges: dict,
         t_marker_id_0 = (constraints[marker_id].inv() @ constraints[root]).t()
 
         tilde_c_0 = k_t * (r_est[c] @ v['pose'].t() + \
-                           r_est[t + '_0'] @ r_0_marker_id @ t_marker_id_0)
+                           r_est[t + "_" + root] @ r_0_marker_id @ t_marker_id_0)
 
         ei = edge2idx[e]
         ni = node2idx[c]
-        nj = node2idx[t + '_0']
+        nj = node2idx[t + "_" + root]
 
         t_tilde[ei*3:ei*3+3] += tilde_c_0
 
