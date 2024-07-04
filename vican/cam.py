@@ -79,12 +79,94 @@ def gen_marker_uid(im_filename: str, marker_id: str) -> str:
     marker_uid = timestamp + '_' + marker_id
     return marker_uid
 
+def estimate_pose_charuco_worker(im_filename: str,
+                                 cam: Camera,
+                                 target_dict: dict,
+                                 flags: str,
+                                 brightness: int,
+                                 contrast: int) -> dict:
+    
+    
+    #create board in here instead of passing it as an argument, since aruco methods are not pickable.... ~1ms
+    charuco_dict = dict()
+    for i in range(0,target_dict["num_boards"]+1):
+        
+        charuco_board = cv.aruco.CharucoBoard(
+            size=(target_dict[str(i)]["sizeX"], target_dict[str(i)]["sizeY"]),
+            squareLength=target_dict[str(i)]["squareLength"],
+            markerLength=target_dict[str(i)]["markerLength"],
+            dictionary= cv.aruco.getPredefinedDictionary(target_dict[str(i)]["dictionary"]),
+            ids=target_dict[str(i)]["ids"])
+        
+        charuco_board.setLegacyPattern(True)
+        charuco_dict[str(i)] = charuco_board        
+    
+    output = dict()
+    
+    im = cv.imread(im_filename)
+    im = np.int16(im)
+    
+    if contrast != 0:
+        im = im * (contrast/127+1) - contrast
+        
+    im += brightness
+    im = np.clip(im, 0, 255)
+    im = np.uint8(im)
+    
+    #extract aruco dictionary
+    aruco_dict = charuco_dict["0"].getDictionary()
+    
+    # Detect aruco markers
+    corners, ids, rejected = cv.aruco.detectMarkers(im, aruco_dict)
+    
+    if len(corners) == 0:
+        return output
+    
+    #go through all the charuco boards and compute one edge for each
+    for board_id, charuco_board in charuco_dict.items():
+        
+        if board_id == "detector":
+            continue
+        
+        flag, charuco_corners, charuco_ids = cv.aruco.interpolateCornersCharuco(
+                    corners, ids, im, charuco_board)
+        
+        if flag:
+            objPoints, imPoints = charuco_board.matchImagePoints(charuco_corners, charuco_ids)
+            
+            if len(objPoints) <= 4:
+                continue # no enough points to estimate pose
+            
+            retval, rvec, tvec = cv.solvePnP(objPoints, imPoints,
+                                              cam.intrinsics,
+                                              cam.distortion,
+                                              flags=eval('cv.' + flags))
+            
+            # TODO: check if pnp refinement is necesseary and adequeate for charuco boards
+            if not retval:
+                continue
+            
+            R = cv.Rodrigues(rvec)[0]
+            pose= SE3(R=R, t=tvec)
+            
+            reprojected = cv.projectPoints(objPoints, R, tvec,
+                                        cam.intrinsics, cam.distortion)[0]
+            
+            #unpack impoints
+            reprojection_err = np.linalg.norm(reprojected - imPoints, axis=1).max()
+            key = (cam.id, gen_marker_uid(im_filename,board_id))
+            
+            output[key] = {'pose' : pose,
+                           'corners' : imPoints.squeeze(),
+                           'reprojected_err' : reprojection_err,
+                           'im_filename' : im_filename}
+            
+            
+    return output
 
-def estimate_pose_worker(im_filename: str,
+def estimate_pose_aruco_worker(im_filename: str,
                          cam: Camera,
-                         aruco: str,
-                         marker_size: float,
-                         corner_refine: str,
+                         target_dict: dict,
                          flags: str,
                          brightness: int,
                          contrast: int) -> dict:
@@ -123,9 +205,13 @@ def estimate_pose_worker(im_filename: str,
             Values are dicts with "pose" (SE3), "corners" (np.ndarray), 
             "reprojected_err" (float) and "im_filename" (str).
     """
-    dictionary = cv.aruco.Dictionary_get(eval('cv.aruco.' + aruco))
-    parameters = cv.aruco.DetectorParameters_create()
-
+    # Unpack target_dict
+    aruco = target_dict["dictionary"]
+    marker_size = target_dict["marker_size"]
+    corner_refine = target_dict["corner_refine"]
+    
+    dictionary = cv.aruco.getPredefinedDictionary(eval('cv.aruco.' + aruco))
+    parameters = cv.aruco.DetectorParameters()
     if corner_refine is not None:
         parameters.cornerRefinementMethod = eval('cv.aruco.' + corner_refine)
     parameters.cornerRefinementMinAccuracy = 0.05
@@ -150,6 +236,7 @@ def estimate_pose_worker(im_filename: str,
                               [1, 1, 0],
                               [1, -1, 0],
                               [-1, -1, 0]], dtype=np.float32)
+    
     marker_points *= marker_size * 0.5
 
     output = dict()
@@ -189,13 +276,11 @@ def estimate_pose_worker(im_filename: str,
 
 def estimate_pose_mp(im_filenames: Iterable[str],
                      cams: Iterable[Camera],
-                     aruco: str,
-                     marker_size: float,
-                     corner_refine: str,
+                     target_dict: dict,
                      brightness: int,
                      contrast: int,
                      flags: str,
-                     marker_ids: Iterable[str]) -> dict:
+                     ) -> dict:
     """
         Multiprocessing pool of estimate_pose_worker. 
         Iterates through all image filenames provided in im_filenames,
@@ -243,10 +328,8 @@ def estimate_pose_mp(im_filenames: Iterable[str],
     num_workers = mp.cpu_count()
     print("Started pool of {} workers.".format(num_workers))
 
-    f = partial(estimate_pose_worker,
-                aruco=aruco, 
-                marker_size=marker_size, 
-                corner_refine=corner_refine,
+    f = partial(target_dict["detector"],
+                target_dict=target_dict,
                 brightness=brightness,
                 contrast=contrast,
                 flags=flags)
@@ -260,6 +343,10 @@ def estimate_pose_mp(im_filenames: Iterable[str],
     print("Found markers in {} images".format(len(out)))
 
     # Merge dictionaries and eliminate detections of markers with wrong id
-    out = {k: v for d in out for k, v in d.items() if k[-1].split('_')[-1] in marker_ids}
+    if target_dict["detector"] == estimate_pose_aruco_worker:
+        out = {k: v for d in out for k, v in d.items() if k[-1].split('_')[-1] in target_dict['marker_ids']}
+    else:
+        out = {k: v for d in out for k, v in d.items()}
+        
     print("Finished: {} markers detected.".format(len(out)))
     return out

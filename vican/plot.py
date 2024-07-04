@@ -72,8 +72,9 @@ def detect_and_draw(im_filename: str,
         im : np.ndarray 
             Image with marker drawn.
     """
-    dictionary = cv.aruco.Dictionary_get(eval('cv.aruco.' + aruco))
-    parameters = cv.aruco.DetectorParameters_create()
+    
+    dictionary = cv.aruco.getPredefinedDictionary(eval('cv.aruco.' + aruco))
+    parameters = cv.aruco.DetectorParameters()
     if corner_refine is not None:
         parameters.cornerRefinementMethod = eval('cv.aruco.' + corner_refine)
     parameters.cornerRefinementMinAccuracy = 0.05
@@ -92,8 +93,8 @@ def detect_and_draw(im_filename: str,
     im = np.clip(im, 0, 255)
     im = np.uint8(im)
     
-    marker_corners, marker_ids, _ = cv.aruco.detectMarkers(im,
-                                                           dictionary)
+    marker_corners, marker_ids, _ = cv.aruco.detectMarkers(im, dictionary, parameters=parameters)
+    
     marker_ids = list(map(str, marker_ids.flatten()))
 
     im = cv.cvtColor(im, cv.COLOR_BGR2GRAY)

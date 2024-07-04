@@ -90,7 +90,7 @@ class Dataset(object):
         for t in timestamps:
             filenames = os.listdir(os.path.join(self.root, t))
             for filename in filenames:
-                if filename.endswith('.jpg'):
+                if filename.endswith('.jpg') or filename.endswith('.png'):
                     cam_id = filename.split('.')[0]
                     self.im_data['cam_id'].append(cam_id)
                     self.im_data['filename'].append(os.path.join(self.root, t, filename))
