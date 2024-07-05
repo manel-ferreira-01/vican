@@ -48,7 +48,7 @@ def draw_marker(im: np.ndarray,
     return im
 
 
-def detect_and_draw(im_filename: str,
+def detect_and_draw_aruco(im_filename: str,
                     aruco: str,
                     brightness: int=0,
                     contrast: int=0,
@@ -103,8 +103,65 @@ def detect_and_draw(im_filename: str,
     for mc, i in zip(marker_corners, marker_ids):
         im = draw_marker(im, mc, i)
     print(sorted([int(i) for i in marker_ids]))
+    
     return im
 
+def detect_and_draw_charuco(im_filename: str,
+                    target_dict: str,
+                    brightness: int=0,
+                    contrast: int=0) -> np.ndarray:
+    
+    
+    
+
+    #create board in here instead of passing it as an argument, since aruco methods are not pickable.... ~1ms
+    charuco_dict = dict()
+    for i in range(0,target_dict["num_boards"]+1):
+        
+        charuco_board = cv.aruco.CharucoBoard(
+            size=(target_dict[str(i)]["sizeX"], target_dict[str(i)]["sizeY"]),
+            squareLength=target_dict[str(i)]["squareLength"],
+            markerLength=target_dict[str(i)]["markerLength"],
+            dictionary= cv.aruco.getPredefinedDictionary(target_dict[str(i)]["dictionary"]),
+            ids=target_dict[str(i)]["ids"])
+        
+        charuco_board.setLegacyPattern(True)
+        charuco_dict[str(i)] = charuco_board        
+    
+    output = dict()
+    
+    im = cv.imread(im_filename)
+    im = np.int16(im)
+    
+    if contrast != 0:
+        im = im * (contrast/127+1) - contrast
+        
+    im += brightness
+    im = np.clip(im, 0, 255)
+    im = np.uint8(im)
+    
+    #extract aruco dictionary
+    aruco_dict = charuco_dict["0"].getDictionary()
+    
+    # Detect aruco markers
+    corners, ids, rejected = cv.aruco.detectMarkers(im, aruco_dict)
+    
+    if len(corners) == 0:
+        return output
+    
+    #go through all the charuco boards and compute one edge for each
+    for board_id, charuco_board in charuco_dict.items():
+        
+        if board_id == "detector":
+            continue
+        
+        flag, charuco_corners, charuco_ids = cv.aruco.interpolateCornersCharuco(
+                    corners, ids, im, charuco_board)
+        
+        if flag:
+            im = cv.aruco.drawDetectedCornersCharuco(im, charuco_corners, charuco_ids, cornerColor=(0, 255, 0))
+        
+    return im
 
 def plot_cams_3D(cams: Iterable[Camera],
                  scale: float=0.4,
