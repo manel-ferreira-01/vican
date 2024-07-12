@@ -38,7 +38,7 @@ class Camera(object):
         """
         self.id = id
         self.intrinsics   = intrinsics.squeeze()
-        self.distortion   = distortion.squeeze()
+        self.distortion   = distortion
         self.extrinsics   = extrinsics
         self.resolution_x = resolution_x
         self.resolution_y = resolution_y

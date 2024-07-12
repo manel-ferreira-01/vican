@@ -50,9 +50,10 @@ def draw_marker(im: np.ndarray,
 
 def detect_and_draw_aruco(im_filename: str,
                     aruco: str,
+                    cam: Camera,
                     brightness: int=0,
                     contrast: int=0,
-                    corner_refine: str='CORNER_REFINE_APRILTAG') -> np.ndarray:
+                    corner_refine: str='CORNER_REFINE_SUBPIX') -> np.ndarray:
     """
         Detects and draws arUco markers on image.
 
@@ -75,13 +76,16 @@ def detect_and_draw_aruco(im_filename: str,
     
     dictionary = cv.aruco.getPredefinedDictionary(eval('cv.aruco.' + aruco))
     parameters = cv.aruco.DetectorParameters()
-    if corner_refine is not None:
+    
+    #default params
+    
+    """ if corner_refine is not None:
         parameters.cornerRefinementMethod = eval('cv.aruco.' + corner_refine)
     parameters.cornerRefinementMinAccuracy = 0.05
     parameters.adaptiveThreshConstant = 10
     parameters.cornerRefinementMaxIterations = 50
     parameters.adaptiveThreshWinSizeStep = 5
-    parameters.adaptiveThreshWinSizeMax = 35
+    parameters.adaptiveThreshWinSizeMax = 35 """
 
     im = cv.imread(im_filename)
     im = np.int16(im)
@@ -94,15 +98,50 @@ def detect_and_draw_aruco(im_filename: str,
     im = np.uint8(im)
     
     marker_corners, marker_ids, _ = cv.aruco.detectMarkers(im, dictionary, parameters=parameters)
+        
+    marker_points = np.array([[-1, 1, 0],
+                              [1, 1, 0],
+                              [1, -1, 0],
+                              [-1, -1, 0]], dtype=np.float32)
     
-    marker_ids = list(map(str, marker_ids.flatten()))
+    marker_points *= 0.087 * 0.5
+    
+    if len(marker_corners) > 0:
+        
+        marker_ids = list(map(str, marker_ids.flatten()))
+        
+        for corners, marker_id in zip(marker_corners, marker_ids):
+            corners = corners.squeeze()
 
-    im = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
-    im = np.stack((im,im,im), axis=2)
+            flag, rvec, t = cv.solvePnP(marker_points,
+                                        imagePoints=corners,
+                                        cameraMatrix=cam.intrinsics,
+                                        distCoeffs=cam.distortion,
+                                        flags=cv.SOLVEPNP_IPPE_SQUARE)
+            
+            if flag:
+                rvec, t = cv.solvePnPRefineLM(marker_points,
+                                              imagePoints=corners,
+                                              cameraMatrix=cam.intrinsics,
+                                              distCoeffs=cam.distortion,
+                                              rvec=rvec,
+                                              tvec=t)
+                
+                print(rvec, marker_id)
 
-    for mc, i in zip(marker_corners, marker_ids):
-        im = draw_marker(im, mc, i)
-    print(sorted([int(i) for i in marker_ids]))
+            #draw frames of axis
+            if flag:
+                #continue
+                im = cv.drawFrameAxes(im, cameraMatrix=cam.intrinsics, distCoeffs=cam.distortion, rvec=rvec, tvec=t, length=0.1)
+
+    #im = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
+    #im = np.stack((im,im,im), axis=2)
+    
+    #for mc, i in zip(marker_corners, marker_ids):
+    #    im = draw_marker(im, mc, i)
+    #print(sorted([int(i) for i in marker_ids]))
+    
+    
     
     return im
 
@@ -125,7 +164,7 @@ def detect_and_draw_charuco(im_filename: str,
             dictionary= cv.aruco.getPredefinedDictionary(target_dict[str(i)]["dictionary"]),
             ids=target_dict[str(i)]["ids"])
         
-        charuco_board.setLegacyPattern(True)
+        #charuco_board.setLegacyPattern(True)
         charuco_dict[str(i)] = charuco_board        
     
     output = dict()
@@ -186,7 +225,7 @@ def plot_cams_3D(cams: Iterable[Camera],
         axs[i,:,:,0] += extrinsics.t().reshape((-1,1))
         axs[i,:,:,1] += extrinsics.t().reshape((-1,1)) + scale*extrinsics.R()
 
-    fig = px.scatter_3d(x=pos[:,0], y=pos[:,1], z=pos[:,2])
+    fig = px.scatter_3d(x=pos[:,0], y=pos[:,1], z=pos[:,2],text=[str(i) for i in range(len(cams))])
     fig.update_traces(marker_size=2, marker_color='gray')
 
     c = ['red', 'green', 'blue']
