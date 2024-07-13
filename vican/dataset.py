@@ -53,7 +53,7 @@ class Dataset(object):
             
             self.cams[k] = Camera(id=k,
                                   intrinsics=K,
-                                  distortion=np.array([v["distortion"]]),
+                                  distortion=np.array([v["distortion"]], dtype=np.float64),
                                   extrinsics=SE3(R=np.array(v['R']),
                                                  t=np.array(v['t'])),
                                   resolution_x=v["resolution_x"],

@@ -132,9 +132,10 @@ def estimate_pose_charuco_worker(im_filename: str,
                     corners, ids, im, charuco_board)
         
         if flag:
+            
             objPoints, imPoints = charuco_board.matchImagePoints(charuco_corners, charuco_ids)
             
-            if len(objPoints) <= 4:
+            if len(objPoints) < 4:
                 continue # no enough points to estimate pose
             
             retval, rvec, tvec = cv.solvePnP(objPoints, imPoints,
@@ -143,23 +144,24 @@ def estimate_pose_charuco_worker(im_filename: str,
                                               flags=eval('cv.' + flags))
             
             # TODO: check if pnp refinement is necesseary and adequeate for charuco boards
-            if not retval:
-                continue
+            if retval:
             
-            R = cv.Rodrigues(rvec)[0]
-            pose= SE3(R=R, t=tvec)
-            
-            reprojected = cv.projectPoints(objPoints, R, tvec,
-                                        cam.intrinsics, cam.distortion)[0]
-            
-            #unpack impoints
-            reprojection_err = np.linalg.norm(reprojected - imPoints, axis=1).max()
-            key = (cam.id, gen_marker_uid(im_filename,board_id))
-            
-            output[key] = {'pose' : pose,
-                           'corners' : imPoints.squeeze(),
-                           'reprojected_err' : reprojection_err,
-                           'im_filename' : im_filename}
+                R = cv.Rodrigues(rvec)[0]
+                pose= SE3(R=R, t=tvec)
+                
+                
+                
+                reprojected = cv.projectPoints(objPoints, R, tvec,
+                                                cam.intrinsics, cam.distortion )[0]
+                
+                #unpack impoints
+                reprojection_err = np.linalg.norm(reprojected - imPoints, axis=1).max()
+                key = (cam.id, gen_marker_uid(im_filename,board_id))
+                
+                output[key] = {'pose' : pose,
+                            'corners' : imPoints.squeeze(),
+                            'reprojected_err' : reprojection_err,
+                            'im_filename' : im_filename}
             
             
     return output
