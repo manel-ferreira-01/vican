@@ -146,12 +146,10 @@ def detect_and_draw_aruco(im_filename: str,
     return im
 
 def detect_and_draw_charuco(im_filename: str,
-                    target_dict: str,
-                    brightness: int=0,
-                    contrast: int=0) -> np.ndarray:
-    
-    
-    
+                            cam: Camera,
+                            target_dict: str,
+                            brightness: int=0,
+                            contrast: int=0) -> np.ndarray:
 
     #create board in here instead of passing it as an argument, since aruco methods are not pickable.... ~1ms
     charuco_dict = dict()
@@ -167,8 +165,7 @@ def detect_and_draw_charuco(im_filename: str,
         #charuco_board.setLegacyPattern(True)
         charuco_dict[str(i)] = charuco_board        
     
-    output = dict()
-    
+   
     im = cv.imread(im_filename)
     im = np.int16(im)
     
@@ -186,7 +183,7 @@ def detect_and_draw_charuco(im_filename: str,
     corners, ids, rejected = cv.aruco.detectMarkers(im, aruco_dict)
     
     if len(corners) == 0:
-        return output
+        return im
     
     #go through all the charuco boards and compute one edge for each
     for board_id, charuco_board in charuco_dict.items():
@@ -199,10 +196,24 @@ def detect_and_draw_charuco(im_filename: str,
         
         if flag:
             im = cv.aruco.drawDetectedCornersCharuco(im, charuco_corners, charuco_ids, cornerColor=(0, 255, 0))
+            objPoints, imPoints = charuco_board.matchImagePoints(charuco_corners, charuco_ids)
+            
+            if len(objPoints) < 4:
+                continue
+            
+            retval, rvec, tvec = cv.solvePnP(objPoints, imPoints,
+                                              cam.intrinsics,
+                                              cam.distortion,
+                                              flags=cv.SOLVEPNP_IPPE)
+            
+            if retval:
+                im = cv.drawFrameAxes(im, cam.intrinsics, cam.distortion, rvec, tvec, 0.1)
+            
         
     return im
 
 def plot_cams_3D(cams: Iterable[Camera],
+                 pose_est: dict={},
                  scale: float=0.4,
                  output: str='output.html') -> None:
     """
@@ -235,6 +246,13 @@ def plot_cams_3D(cams: Iterable[Camera],
             fig.add_traces(px.line_3d(x=axs[i,0,j,:],
                                       y=axs[i,1,j,:],
                                       z=axs[i,2,j,:]).update_traces(line_color=c[j]).data)
+            
+    if pose_est is not None:
+        for cam_id, pose in pose_est.items():
+            if "_" in cam_id:
+                fig.add_traces(px.scatter_3d(x=[pose.t()[0]], y=[pose.t()[1]], z=[pose.t()[2]]).update_traces(marker_size=1, marker_color='black').data)
+            
+        
     fig.update_scenes(aspectmode='data')
     
     if output.endswith('.html'):
