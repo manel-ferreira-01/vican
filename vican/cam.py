@@ -161,7 +161,8 @@ def estimate_pose_charuco_worker(im_filename: str,
                 output[key] = {'pose' : pose,
                             'corners' : imPoints.squeeze(),
                             'reprojected_err' : reprojection_err,
-                            'im_filename' : im_filename}
+                            'im_filename' : im_filename,
+                            'distance' : np.linalg.norm(tvec)}
             
             
     return output
