@@ -8,6 +8,7 @@ import numpy as np
 import multiprocessing as mp
 from functools import partial
 from typing import Iterable
+import time
 
 from .geometry import SE3
 
@@ -87,6 +88,8 @@ def estimate_pose_charuco_worker(im_filename: str,
                                  contrast: int) -> dict:
     
     
+    start = time.time()
+    
     #create board in here instead of passing it as an argument, since aruco methods are not pickable.... ~1ms
     charuco_dict = dict()
     for i in range(0,target_dict["num_boards"]+1):
@@ -162,7 +165,8 @@ def estimate_pose_charuco_worker(im_filename: str,
                             'corners' : imPoints.squeeze(),
                             'reprojected_err' : reprojection_err,
                             'im_filename' : im_filename,
-                            'distance' : np.linalg.norm(tvec)}
+                            'distance' : np.linalg.norm(tvec),
+                            'time' : time.time()-start}
             
             
     return output

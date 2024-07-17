@@ -150,7 +150,7 @@ def detect_and_draw_charuco(im_filename: str,
                             target_dict: str,
                             brightness: int=0,
                             contrast: int=0) -> np.ndarray:
-
+       
     #create board in here instead of passing it as an argument, since aruco methods are not pickable.... ~1ms
     charuco_dict = dict()
     for i in range(0,target_dict["num_boards"]+1):
