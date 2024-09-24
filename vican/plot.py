@@ -127,7 +127,7 @@ def detect_and_draw_aruco(im_filename: str,
                                               rvec=rvec,
                                               tvec=t)
                 
-                print(rvec, marker_id)
+                print(np.linalg.norm(t))
 
             #draw frames of axis
             if flag:
@@ -149,7 +149,8 @@ def detect_and_draw_charuco(im_filename: str,
                             cam: Camera,
                             target_dict: str,
                             brightness: int=0,
-                            contrast: int=0) -> np.ndarray:
+                            contrast: int=0,
+                            test: np.ndarray=np.array([[0],[0],[0]]) ) -> np.ndarray:
        
     #create board in here instead of passing it as an argument, since aruco methods are not pickable.... ~1ms
     charuco_dict = dict()
@@ -179,9 +180,9 @@ def detect_and_draw_charuco(im_filename: str,
     #extract aruco dictionary
     aruco_dict = charuco_dict["0"].getDictionary()
     
-    # Detect aruco markers
-    corners, ids, rejected = cv.aruco.detectMarkers(im, aruco_dict)
-    
+    # Detect aruco markers    
+    corners, ids, _  = cv.aruco.detectMarkers( cv.undistort(im, cam.intrinsics, cam.distortion), aruco_dict)
+        
     if len(corners) == 0:
         return im
     
@@ -195,25 +196,68 @@ def detect_and_draw_charuco(im_filename: str,
                     corners, ids, im, charuco_board)
         
         if flag:
-            im = cv.aruco.drawDetectedCornersCharuco(im, charuco_corners, charuco_ids, cornerColor=(0, 255, 0))
             objPoints, imPoints = charuco_board.matchImagePoints(charuco_corners, charuco_ids)
             
             if len(objPoints) < 4:
                 continue
             
-            retval, rvec, tvec = cv.solvePnP(objPoints, imPoints,
+            retval, rvec, tvec,errors = cv.solvePnPGeneric(objPoints, imPoints,
                                               cam.intrinsics,
                                               cam.distortion,
                                               flags=cv.SOLVEPNP_IPPE)
+
+            if 1:
+                for idx in range(0,len(rvec)):
+                    M_wrld_to_cam = np.vstack ((
+                                    np.hstack( (cv.Rodrigues(rvec[idx])[0] , tvec[idx]) ),
+                                    np.array([0,0,0,1]) ))
+                    
+                    alpha_0 = M_wrld_to_cam @ np.vstack(( 0, 0, 0.1, 1 ))
+                    alpha_0 = alpha_0 / alpha_0[3]
+
+                    #print(alpha_0) # unit vector in camera frame
+                    #print(tvec[idx])
+                    
+                    # vector from tag to unit vector in camera frame
+                    merda = alpha_0[:3] - tvec[0]
+                    print(merda)
+                    
+                    pts = cv.projectPoints(np.array([[0],[0],[0.1]], dtype=np.float32), rvec[idx], tvec[idx], cam.intrinsics, cam.distortion, test)[0].squeeze()
+                    
+                    
+                    if merda[2] > 0: # paint green if z > 0
+                        im = cv.circle(im, (int(pts[0]), int(pts[1])), 2, (0,255,0), 2)        
+                    else:
+                        im = cv.circle(im, (int(pts[0]), int(pts[1])), 2, (0,0,255), 2)                
+                    
+                    if retval:
+                        im = cv.drawFrameAxes(im, cam.intrinsics, cam.distortion, rvec[idx], tvec[idx], 0.15)
             
-            if retval:
-                im = cv.drawFrameAxes(im, cam.intrinsics, cam.distortion, rvec, tvec, 0.1)
-            
+            if 0:
+                for idx in range(0,len(rvec)):
+                    vec = np.array([[0],[0],[1]], dtype=np.float32)
+                    
+                    R = cv.Rodrigues(rvec[idx])[0]
+                    
+                    camZAxis = R @ vec
+                    
+                    print(camZAxis)
+            if 1:
+                if retval:
+                    im = cv.drawFrameAxes(im, cam.intrinsics, cam.distortion, rvec[0], tvec[0], 0.15)
+
+                
+            f""" or idx in range(0,len(rvec)):
+                print(np.vstack ((
+                        np.hstack( (cv.Rodrigues(rvec)[0] , tvec) ),
+                        np.array([0,0,0,1]) )))
+                print(np.linalg.det(cv.Rodrigues(rvec)[0])) """
         
+                
     return im
 
 def plot_cams_3D(cams: Iterable[Camera],
-                 pose_est: dict={},
+                 pose_est: np.ndarray=None,
                  scale: float=0.4,
                  output: str='output.html') -> None:
     """
@@ -246,13 +290,9 @@ def plot_cams_3D(cams: Iterable[Camera],
             fig.add_traces(px.line_3d(x=axs[i,0,j,:],
                                       y=axs[i,1,j,:],
                                       z=axs[i,2,j,:]).update_traces(line_color=c[j]).data)
-            
     if pose_est is not None:
-        for cam_id, pose in pose_est.items():
-            if "_" in cam_id:
-                fig.add_traces(px.scatter_3d(x=[pose.t()[0]], y=[pose.t()[1]], z=[pose.t()[2]]).update_traces(marker_size=1, marker_color='black').data)
-            
-        
+        fig.add_traces(px.scatter_3d(x=pose_est[:,0], y=pose_est[:,1], z=pose_est[:,2]).update_traces(marker_size=1, marker_color='black').data)
+
     fig.update_scenes(aspectmode='data')
     
     if output.endswith('.html'):

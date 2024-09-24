@@ -120,7 +120,7 @@ def estimate_pose_charuco_worker(im_filename: str,
     aruco_dict = charuco_dict["0"].getDictionary()
     
     # Detect aruco markers
-    corners, ids, rejected = cv.aruco.detectMarkers(im, aruco_dict)
+    corners, ids, rejected = cv.aruco.detectMarkers(cv.undistort(im, cam.intrinsics, cam.distortion), aruco_dict)
     
     if len(corners) == 0:
         return output
@@ -141,7 +141,7 @@ def estimate_pose_charuco_worker(im_filename: str,
             if len(objPoints) < 4:
                 continue # no enough points to estimate pose
             
-            retval, rvec, tvec = cv.solvePnP(objPoints, imPoints,
+            retval, rvecs, tvecs, errors = cv.solvePnPGeneric(objPoints, imPoints,
                                               cam.intrinsics,
                                               cam.distortion,
                                               flags=eval('cv.' + flags))
@@ -149,24 +149,29 @@ def estimate_pose_charuco_worker(im_filename: str,
             # TODO: check if pnp refinement is necesseary and adequeate for charuco boards
             if retval:
             
-                R = cv.Rodrigues(rvec)[0]
-                pose= SE3(R=R, t=tvec)
+                R = cv.Rodrigues(rvecs[np.argmin(errors)])[0]
+                tvec = tvecs[np.argmin(errors)]
+                pose = SE3(R=R, t=tvecs[np.argmin(errors)])
                 
-                
+                other_pose = SE3(R=cv.Rodrigues(rvecs[np.argmax(errors)])[0],
+                                t=tvecs[np.argmax(errors)])
                 
                 reprojected = cv.projectPoints(objPoints, R, tvec,
                                                 cam.intrinsics, cam.distortion )[0]
                 
                 #unpack impoints
-                reprojection_err = np.linalg.norm(reprojected - imPoints, axis=1).max()
+                """ reprojection_err = np.linalg.norm(reprojected - imPoints, axis=1).max() """
                 key = (cam.id, gen_marker_uid(im_filename,board_id))
                 
                 output[key] = {'pose' : pose,
+                            'other_pose': other_pose,
                             'corners' : imPoints.squeeze(),
-                            'reprojected_err' : reprojection_err,
+                            'reprojected_err' : errors[np.argmin(errors)].squeeze(),
+                            'other_error': errors[np.argmax(errors)].squeeze(),
                             'im_filename' : im_filename,
                             'distance' : np.linalg.norm(tvec),
-                            'time' : time.time()-start}
+                            'time' : time.time()-start,
+                            'fro': np.linalg.norm(pose.R() - other_pose.R(), 'fro')}
             
             
     return output
@@ -252,11 +257,21 @@ def estimate_pose_aruco_worker(im_filename: str,
         for corners, marker_id in zip(marker_corners, marker_ids):
             corners = corners.squeeze()
 
-            flag, rvec, t = cv.solvePnP(marker_points,
+            flag, rvecs, tvecs, errors = cv.solvePnPGeneric(marker_points,
                                         imagePoints=corners,
                                         cameraMatrix=cam.intrinsics,
                                         distCoeffs=cam.distortion,
                                         flags=eval('cv.' + flags))
+            
+            # retrieve the pose with lowest reprojection error
+            rvec = rvecs[np.argmin(errors)]
+            t = tvecs[np.argmin(errors)]
+            
+            # save the pose with the most reprojection error
+            other_R = cv.Rodrigues(rvecs[np.argmax(errors)])[0]
+            other_t = tvecs[np.argmax(errors)]
+            other_pose = SE3(R=other_R, t=other_t)
+            
             if not flag:
                 continue
             rvec, t = cv.solvePnPRefineLM(marker_points,
@@ -267,16 +282,20 @@ def estimate_pose_aruco_worker(im_filename: str,
                                           tvec=t)
             R = cv.Rodrigues(rvec)[0]
             pose = SE3(R=R, t=t)
-            reprojected = cv.projectPoints(marker_points, R, t,
+            """ reprojected = cv.projectPoints(marker_points, R, t,
                                            cam.intrinsics, cam.distortion)[0].squeeze()
             
-            reprojection_err = np.linalg.norm(reprojected - corners, axis=1).max()
+            reprojection_err = np.linalg.norm(reprojected - corners, axis=1).max() """
             key = (cam.id, gen_marker_uid(im_filename, marker_id))
 
             output[key] = {'pose' : pose,
+                           'other_pose': other_pose,
+                           'other_error': errors[np.argmax(errors)].squeeze(),
                            'corners' : corners.squeeze(), 
-                           'reprojected_err' : reprojection_err,
+                           'reprojected_err' : errors[np.argmin(errors)].squeeze(),
+                           'distance' : np.linalg.norm(t),
                            'im_filename' : im_filename}
+            
         return output
     
 
