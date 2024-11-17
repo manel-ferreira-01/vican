@@ -104,7 +104,7 @@ def detect_and_draw_aruco(im_filename: str,
                               [1, -1, 0],
                               [-1, -1, 0]], dtype=np.float32)
     
-    marker_points *= 0.087 * 0.5
+    marker_points *= 0.097 * 0.5
     
     if len(marker_corners) > 0:
         
@@ -113,26 +113,27 @@ def detect_and_draw_aruco(im_filename: str,
         for corners, marker_id in zip(marker_corners, marker_ids):
             corners = corners.squeeze()
 
-            flag, rvec, t = cv.solvePnP(marker_points,
+            flag, rvec, t, errors = cv.solvePnPGeneric(marker_points,
                                         imagePoints=corners,
                                         cameraMatrix=cam.intrinsics,
                                         distCoeffs=cam.distortion,
                                         flags=cv.SOLVEPNP_IPPE_SQUARE)
             
-            if flag:
+            """ if flag:
                 rvec, t = cv.solvePnPRefineLM(marker_points,
                                               imagePoints=corners,
                                               cameraMatrix=cam.intrinsics,
                                               distCoeffs=cam.distortion,
                                               rvec=rvec,
-                                              tvec=t)
+                                              tvec=t) """
                 
-                print(np.linalg.norm(t))
-
             #draw frames of axis
             if flag:
                 #continue
-                im = cv.drawFrameAxes(im, cameraMatrix=cam.intrinsics, distCoeffs=cam.distortion, rvec=rvec, tvec=t, length=0.1)
+                im = cv.drawFrameAxes(im, cameraMatrix=cam.intrinsics, distCoeffs=np.zeros((1,5)), \
+                                       rvec=rvec[np.argmin(errors)], tvec=t[np.argmin(errors)], \
+                                        length=0.06)
+                #im = cv.drawFrameAxes(im, cameraMatrix=cam.intrinsics, distCoeffs=cam.distortion, rvec=rvec[1], tvec=t[1], length=0.1)
 
     #im = cv.cvtColor(im, cv.COLOR_BGR2GRAY)
     #im = np.stack((im,im,im), axis=2)

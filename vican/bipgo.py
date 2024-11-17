@@ -529,6 +529,7 @@ def object_bipartite_se3sync(src_edges: dict,
         edges[marker_id, t + '_' + root] = {'pose'            : v['pose'].inv(),
                                             'corners'         : v['corners'],
                                             'reprojected_err' : v['reprojected_err'],
+                                            'other_error'     : v['other_error'],
                                             'im_filename'     : v['im_filename']}
         
     

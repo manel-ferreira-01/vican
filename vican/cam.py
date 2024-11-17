@@ -274,12 +274,14 @@ def estimate_pose_aruco_worker(im_filename: str,
             
             if not flag:
                 continue
-            rvec, t = cv.solvePnPRefineLM(marker_points,
+            
+            """ rvec, t = cv.solvePnPRefineLM(marker_points,
                                           imagePoints=corners,
                                           cameraMatrix=cam.intrinsics,
                                           distCoeffs=cam.distortion,
                                           rvec=rvec,
-                                          tvec=t)
+                                          tvec=t) """
+            
             R = cv.Rodrigues(rvec)[0]
             pose = SE3(R=R, t=t)
             """ reprojected = cv.projectPoints(marker_points, R, t,
@@ -294,7 +296,8 @@ def estimate_pose_aruco_worker(im_filename: str,
                            'corners' : corners.squeeze(), 
                            'reprojected_err' : errors[np.argmin(errors)].squeeze(),
                            'distance' : np.linalg.norm(t),
-                           'im_filename' : im_filename}
+                           'im_filename' : im_filename,
+                           'px_area': cv.contourArea(corners)}
             
         return output
     
